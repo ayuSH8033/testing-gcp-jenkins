@@ -1,0 +1,100 @@
+name: testing-github-jenkins-integration
+on:
+  workflow_dispatch:
+env:
+  prd_pattern: release
+jobs:
+  Setup_Env:
+    name: Setup Env
+    runs-on:
+      - self-hosted
+      - k8-slaves-node-18
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "if ( \"$BRANCH_NAME\" =~ env.prd_pattern ) {\n                      if (\"$ENV\" == \"us\")\n                      {\n                        env.s3_bucket = 'tfg-snappy-prod'\n                      }\n                      else if (\"$ENV\" == \"uk\")\n                      {\n                        env.s3_bucket = 'tfg-snappy-prod-uk'\n                      }\n                      else if (\"$ENV\" == \"de\")\n                      {\n                        env.s3_bucket = 'tfg-snappy-prod-de'\n                      }\n                        env.awsCreds = 'aws-master-prod'\n                        env.ENVIR = 'prod'\n                    }\n                    else \n                    {\n                      env.s3_bucket = 'snappy-qa'\n                      env.ENVIR = 'qa'\n                      env.awsCreds = 'aws-master-dev'\n                    }\n                    displayVar = \"${GIT_COMMIT[0..5]}-${{ env.ENVIR }}\"\n                    currentBuild.displayName = \"${{ env.displayVar }}\"\n                    env.ADD_TAG = \"snappy-${{ env.ENVIR }}\"\n                    \n                    withCredentials([string(credentialsId: 'NPM_TOKEN', variable: 'NPM_TOKEN')]) {\n\n                    env.NPM_TOKEN = \"${{ env.NPM_TOKEN }}\"\n\n                }"
+  SCM:
+    runs-on:
+      - self-hosted
+      - k8-slaves-node-18
+    needs: Setup_Env
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             def jobLabel = "${{ env.BRANCH_NAME }}".replaceAll("[/_.]", "-").toLowerCase().take(63)
+#                                   currentBuild.displayName = "${{ env.jobLabel }}-${{ env.ENVIR }}#${{ github.run_id }}"
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+      with:
+        repository: techstyleinc/snappy-signup
+  Build:
+    runs-on:
+      - self-hosted
+      - k8-slaves-node-18
+    needs: SCM
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'ansiColor' was not transformed because there is no suitable equivalent in GitHub Actions
+#     # This item has no matching transformer
+#     - writeFile:
+#       - key: file
+#         value:
+#           isLiteral: true
+#           value: ".npmrc"
+#       - key: text
+#         value:
+#           isLiteral: true
+#           value: "@fortawesome:registry=https://npm.fontawesome.com/\n                        //npm.fontawesome.com/:_authToken=80D8087D-60C2-4D37-A113-67EE77374A69\n                        registry=https://registry.techstyle.net/repository/npm-all/\n                        //registry.techstyle.net/repository/npm-all/:_authToken=${{ env.NPM_TOKEN }}\n                        //registry.techstyle.net/repository/npm-all/:always-auth=true\n \n                        strict-ssl=false"
+    - name: sh
+      shell: bash
+      run: |2-
+                            #!/bin/bash
+                            set +x
+                            if [ "${{ env.ENVIR }}" = "prod" ]; then
+                               if [ "${{ env.ENV }}" = "uk" -o "${{ env.ENV }}" = "de" ]; then
+                                  yarn install && yarn build:${{ env.ENV }}
+                               else
+                                  yarn install && yarn build:prod
+                               fi
+                            elif [ "${{ env.ENVIR }}" = "qa" ]; then
+                                 yarn install && yarn build
+                            fi
+                            echo "JenkinsBuildID=${{ github.run_id }}
+        GITBRANCH=${{ env.GIT_BRANCH }}
+        GIT_COMMIT=${{ env.GIT_COMMIT }}
+        BUILD_URL=${{ env.JOB_URL }}" > ./buildinfo.txt
+                            mkdir -p ../build
+                            ls
+                            cp ./buildinfo.txt ../build/
+                            ##cp -r * ../build/
+                            ##cp -r !(Jenkinsfile) ./build/
+                            echo AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                            echo AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+  Deploy:
+    runs-on:
+      - self-hosted
+      - k8-slaves-node-18
+    needs: Build
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'ansiColor' was not transformed because there is no suitable equivalent in GitHub Actions
+#     # 'withCredentials(type=AmazonWebServicesCredentialsBinding)' was not transformed because there is no suitable equivalent in GitHub Actions
+#     # 'ansiColor' was not transformed because there is no suitable equivalent in GitHub Actions
+    - name: sh
+      shell: bash
+      run: '"aws s3 cp ../build s3://\"${{ env.s3_bucket }}\" --recursive"'
