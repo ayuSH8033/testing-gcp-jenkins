@@ -1,6 +1,5 @@
 name: testing-github-jenkins-integration
-on:
-  workflow_dispatch:
+on:  workflow_dispatch
 env:
   prd_pattern: release
 jobs:
