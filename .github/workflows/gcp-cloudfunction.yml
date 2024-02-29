@@ -1,0 +1,494 @@
+name: gcp-CloudFunction
+on:
+  workflow_dispatch:
+    inputs:
+      APP_ENV:
+        required: false
+        description: |-
+          currently we only have qa app_env
+          qa
+          stg
+          prod
+        default: qa
+      BRANCH_NAME:
+        required: false
+env:
+#   # This item has no matching transformer
+#   BRANCH_NAME: "${branchSelector()}"
+#   # This item has no matching transformer
+#   SERVICE_REGISTRY: '"$applicationEnv/devops-test/tier1-random"'
+#   # This item has no matching transformer
+#   DOCKER_REGISTRY: snpm-docker-$applicationEnv.random.net/
+#   # This item has no matching transformer
+#   DOCKER_IMAGE_NAME: "$DOCKER_REGISTRY$SERVICE_REGISTRY"
+#   # This item has no matching transformer
+#   DOCKER_REGISTRY_PATH: https://${{ env.DOCKER_REGISTRY }}${{ env.service_registry }}
+#   # This item has no matching transformer
+#   DOCKER_IMAGE_TAG: "${getSafeBranchName()}"
+#   # This item has no matching transformer
+#   REGISTRY_USER: "${getRegistryUser()}"
+#   # This item has no matching transformer
+#   runUnitTests: '"$runUnitTests"'
+#   # This item has no matching transformer
+#   NODE_VERSION: '"$nodeVersion" //readFile(''.nvmrc'').trim()'
+#   # This item has no matching transformer
+#   NPM_TOKEN: |-
+#     ${sh(
+#           returnStdout: true,
+#           script: "curl -s -H \"APIKey: bec693d854af2739b3a24fe685dc377b\" https://secrets.random.net/api/passwords/3572  | jq -r '.[][\"Password\"]'"
+#         )}
+#   # This item has no matching transformer
+#   forceDelete: '"$forceDelete"'
+jobs:
+  Checkout:
+    if:
+#       # Unsupported condition(s) [expression]
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             env.COMMIT_HASH = checkout([
+#                         $class: 'GitSCM',
+#                         branches: [[name: "$BRANCH_NAME"]],
+#                         userRemoteConfigs: scm.userRemoteConfigs
+#                       ]).GIT_COMMIT
+#                       echo "COMMIT HASH: ${{ env.COMMIT_HASH }}"
+#                       notifyBitbucket('INPROGRESS', env.COMMIT_HASH)
+  Build_Env:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Build Env
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Checkout
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # This item has no matching transformer
+#     - writeFile:
+#       - key: file
+#         value:
+#           isLiteral: true
+#           value: ".npmrc"
+#       - key: text
+#         value:
+#           isLiteral: true
+#           value: |-
+#             registry=https://registry.random.net/repository/npm-all/
+#                               //registry.random.net/repository/npm-all/:_authToken=${{ env.NPM_TOKEN }}
+#                               //registry.random.net/repository/npm-all/:always-auth=true
+#
+#                               strict-ssl=false
+    - name: sh
+      shell: bash
+      run: |-
+        env
+        npm config list -l
+        git --version
+        node -v
+        npm -v
+    - name: sh
+      shell: bash
+      run: npm i -g dotenv-cli
+      env:
+        NPM_TOKEN: "${{ secrets.NPM_TOKEN_NPM_TOKEN }}"
+    - name: sh
+      shell: bash
+      run: npm ci
+      env:
+        NPM_TOKEN: "${{ secrets.NPM_TOKEN_NPM_TOKEN }}"
+  Analysis_Unit_Tests:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Analysis-Unit Tests
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Build_Env
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: sh
+      shell: bash
+      run: dotenv -e env/test.env -- npm run test:ci:sync
+      env:
+        NPM_TOKEN: "${{ secrets.NPM_TOKEN_NPM_TOKEN }}"
+  Analysis_Coverage:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Analysis-Coverage
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Build_Env
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: echo message
+      run: echo (TEMPORARY) coverage check will be part of Unit Test stage in the future
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "try {\n                withCredentials([string(credentialsId: 'NPM_TOKEN', variable: 'NPM_TOKEN')]) {\n                sh('dotenv -e env/test.env -- npm run test:ci:cov')\n              }\n              } catch (error) {\n                // NOTE: prevent build from failing on coverage failures, just mark it unstable (TEMPORARY soft-fail)\n                currentBuild.description = 'â\x9A ï¸\x8F MINIMUM COVERAGE REQUIREMENTS NOT MET â\x80\x94 PLEASE UPDATE TESTS'\n                currentBuild.result = 'UNSTABLE'\n              }"
+  Analysis_Swagger:
+    name: Analysis-Swagger
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Build_Env
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: sh
+      shell: bash
+      run: npm run swagger
+      env:
+        NPM_TOKEN: "${{ secrets.NPM_TOKEN_NPM_TOKEN }}"
+  Build_App:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Build App
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs:
+    - Analysis_Unit_Tests
+    - Analysis_Coverage
+    - Analysis_Swagger
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: sh
+      shell: bash
+      run: npm run build
+      env:
+        NPM_TOKEN: "${{ secrets.NPM_TOKEN_NPM_TOKEN }}"
+  Build_Sentry:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Build Sentry
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    env:
+#       # This item has no matching transformer
+#       sentryAuthToken: "${getSentryAuthToken()}"
+#       # This item has no matching transformer
+#       SENTRY_AUTH_TOKEN:
+#       # This item has no matching transformer
+#       SENTRY_TRACES_SAMPLE_RATE: "${sentryTracesSampleRate()}"
+#       # This item has no matching transformer
+#       SENTRY_SAMPLE_RATE: "${sentrySampleRate()}"
+#       # This item has no matching transformer
+#       SENTRY_DNS: "${sentryDNS()}"
+#       # This item has no matching transformer
+#       SENTRY_ORG: "${sentryOrg()}"
+#       # This item has no matching transformer
+#       SENTRY_PROJECT: "${sentryProject()}"
+#       # This item has no matching transformer
+#       SENTRY_RELEASE: '"${{ env.COMMIT_HASH }}"'
+    needs: Build_App
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: sh
+      shell: bash
+      run: "./node_modules/@sentry/cli/bin/sentry-cli sourcemaps inject ./dist"
+    - name: sh
+      shell: bash
+      run: ./node_modules/@sentry/cli/bin/sentry-cli sourcemaps upload --org="${{ env.SENTRY_ORG }}" --project="${{ env.SENTRY_PROJECT }}" --release="${{ env.SENTRY_RELEASE }}" ./dist
+  Build_Docker_image:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Build Docker image
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Build_Sentry
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             withCredentials([string(credentialsId: 'NPM_TOKEN', variable: 'NPM_TOKEN')]) {
+#                         docker.withRegistry('https://snpm-docker.random.net', "${{ env.REGISTRY_USER }}"){
+#                         app = docker.build(DOCKER_IMAGE_NAME, "--build-arg NODE_VERSION=${{ env.NODE_VERSION }} .")
+#                         }
+#                       }
+  Push_Docker_image_to_Nexus_registry:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Push Docker image to Nexus registry
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Build_Docker_image
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             docker.withRegistry(DOCKER_REGISTRY_PATH, "${{ env.REGISTRY_USER }}"){
+#                       app.push("${{ env.DOCKER_IMAGE_TAG }}")
+#                       app.push("latest")
+#                       }
+  Kubernetes_Deploy_Delete_Create_DNS_record:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Kubernetes Deploy/Delete-Create DNS record
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Push_Docker_image_to_Nexus_registry
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             echo "Checking if DNS record exists: ${{ env.INGRESS_FQDN }}"
+#                          def queryResponse = httpRequest authentication: "${{ env.DNS_USER }}", \
+#                          ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \
+#                          contentType: 'APPLICATION_JSON', httpMode: 'GET', \
+#                          url: "${{ env.DNS_API_URL }}"+"/record:a?name=${{ env.INGRESS_FQDN }}", \
+#                          validResponseCodes: '200,301:308'
+#                          def jsonResponse = new JsonSlurperClassic().parseText(queryResponse.content)
+#                          //echo "DEBUG: queryResponse: ${{ env.queryResponse }}"
+#                          //echo "DEBUG: jsonResponse: ${{ env.jsonResponse }}"
+#                          assert jsonResponse instanceof List
+#                          if(jsonResponse.size() == 1){
+#                            def aRecord = jsonResponse.get(0)
+#                            assert aRecord instanceof java.util.Map
+#                            assert aRecord.get('name') == "${{ env.INGRESS_FQDN }}"
+#                            echo "DNS record exists. Moving to next stage."
+#                            assert true
+#                          }else{
+#                            echo "Creating new A record. FQDN: ${{ env.INGRESS_FQDN }} IP: ${{ env.INGRESS_IP }}"
+#                            def httpPayload = """
+#                                {"ipv4addr": "${{ env.INGRESS_IP }}", "name": "${{ env.INGRESS_FQDN }}"}
+#                            """
+#                            def response = httpRequest authentication: "${{ env.DNS_USER }}", \
+#                            ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \
+#                            contentType: 'APPLICATION_JSON', httpMode: 'POST', \
+#                            requestBody: httpPayload, url: "${{ env.DNS_API_URL }}"+"/record:a", \
+#                            validResponseCodes: '201,301:308'
+#                          }
+  Kubernetes_Deploy_Delete_Create_TIER1_DNS_record:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Kubernetes Deploy/Delete-Create TIER1 DNS record
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    needs: Kubernetes_Deploy_Delete_Create_DNS_record
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             echo "Checking if DNS record exists: ${{ env.TIER1_INGRESS_FQDN }}"
+#                          def queryResponse = httpRequest authentication: "${{ env.DNS_USER }}", \
+#                          ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \
+#                          contentType: 'APPLICATION_JSON', httpMode: 'GET', \
+#                          url: "${{ env.DNS_API_URL }}"+"/record:a?name=${{ env.TIER1_INGRESS_FQDN }}", \
+#                          validResponseCodes: '200,301:308'
+#                          def jsonResponse = new JsonSlurperClassic().parseText(queryResponse.content)
+#                          //echo "DEBUG: queryResponse: ${{ env.queryResponse }}"
+#                          //echo "DEBUG: jsonResponse: ${{ env.jsonResponse }}"
+#                          assert jsonResponse instanceof List
+#                          if(jsonResponse.size() == 1){
+#                            def aRecord = jsonResponse.get(0)
+#                            assert aRecord instanceof java.util.Map
+#                            assert aRecord.get('name') == "${{ env.TIER1_INGRESS_FQDN }}"
+#                            echo "DNS record exists. Moving to next stage."
+#                            assert true
+#                          }else{
+#                            echo "Creating new A record. FQDN: ${{ env.TIER1_INGRESS_FQDN }} IP: ${{ env.INGRESS_IP }}"
+#                            def httpPayload = """
+#                                {"ipv4addr": "${{ env.INGRESS_IP }}", "name": "${{ env.TIER1_INGRESS_FQDN }}"}
+#                            """
+#                            def response = httpRequest authentication: "${{ env.DNS_USER }}", \
+#                            ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \
+#                            contentType: 'APPLICATION_JSON', httpMode: 'POST', \
+#                            requestBody: httpPayload, url: "${{ env.DNS_API_URL }}"+"/record:a", \
+#                            validResponseCodes: '201,301:308'
+#                          }
+  Kubernetes_Deploy_Delete_Deploy_on_Dev:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: Kubernetes Deploy/Delete-Deploy on Dev
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    env:
+#       # This item has no matching transformer
+#       NAMESPACE: '"${{ env.PROJECT_NAME }}"'
+      NUM_OF_REPLICAS: 1
+#       # This item has no matching transformer
+#       REQUESTED_CPU: "${getRequestedNonProdCPU()}"
+#       # This item has no matching transformer
+#       REQUESTED_MEMORY: "${getRequestedNonProdMemory()}"
+#       # This item has no matching transformer
+#       LIMIT_CPU: "${getLimitNonProdCPU()}"
+#       # This item has no matching transformer
+#       LIMIT_MEMORY: "${getLimitNonProdMemory()}"
+    needs: Kubernetes_Deploy_Delete_Create_TIER1_DNS_record
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: echo message
+      run: echo Deploy on dev
+#     # This item has no matching transformer
+#     - kubernetesDeploy:
+#       - key: kubeconfigId
+#         value:
+#           isLiteral: true
+#           value: konvoy-staging
+#       - key: configs
+#         value:
+#           isLiteral: true
+#           value: k8s/resources/deployment/kube.yaml
+#       - key: enableConfigSubstitution
+#         value:
+#           isLiteral: true
+#           value: true
+    - name: snapshot post build job status
+      run: |-
+        echo "success=${{ job.status == 'success' }}" >> $GITHUB_OUTPUT
+        echo "unstable=${{ job.status == 'failure' }}" >> $GITHUB_OUTPUT
+        echo "failure=${{ job.status == 'failure' }}" >> $GITHUB_OUTPUT
+      id: post_build
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "notifyBitbucket('FAILED', env.COMMIT_HASH)\n               sendSlackNotification(getBranchName(), \n                 \"https://\"+env.TIER1_INGRESS_FQDN+\"/status\", \n                 env.BUILD_NUMBER,\n                 env.BUILD_URL,\n                 false,\n                 true)"
+#       if: steps.post_build.outputs.unstable == 'true'
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "notifyBitbucket('FAILED', env.COMMIT_HASH)\n               sendSlackNotification(getBranchName(), \n                 \"https://\"+env.INGRESS_FQDN+\"/status\", \n                 env.BUILD_NUMBER,\n                 env.BUILD_URL,\n                 false,\n                 false)"
+#       if: steps.post_build.outputs.failure == 'true'
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "notifyBitbucket('SUCCESS', env.COMMIT_HASH)\n               sendSlackNotification(getBranchName(), \n                 \"https://\"+env.TIER1_INGRESS_FQDN+\"/status\", \n                 env.BUILD_NUMBER,\n                 env.BUILD_URL,\n                 true,\n                 false)"
+#       if: steps.post_build.outputs.success == 'true'
+  Kubernetes_Deploy_Delete_Cleanup_delete_k8s_resources_DNS_record_and_docker_image:
+    if:
+#       # Unsupported condition(s) [expression]
+    name: "Kubernetes Deploy/Delete-Cleanup - delete k8s resources, DNS record, and docker image"
+    runs-on:
+      - self-hosted
+      - '"k8-slaves-node-$nodeVersion"'
+    env:
+#       # This item has no matching transformer
+#       NAMESPACE: '"${{ env.PROJECT_NAME }}"'
+#       # This item has no matching transformer
+#       REGISTRY_AUTH:
+#       # This item has no matching transformer
+#       IMAGE_TAG_TO_DELETE: "${getSourceBranchSafeName()}"
+    needs: Kubernetes_Deploy_Delete_Deploy_on_Dev
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: echo message
+      run: echo Deleting resources from k8s
+#     # This item has no matching transformer
+#     - kubernetesDeploy:
+#       - key: kubeconfigId
+#         value:
+#           isLiteral: true
+#           value: konvoy-staging
+#       - key: configs
+#         value:
+#           isLiteral: true
+#           value: k8s/resources/cleanup/kube-cleanup.yaml
+#       - key: enableConfigSubstitution
+#         value:
+#           isLiteral: true
+#           value: true
+#       - key: deleteResource
+#         value:
+#           isLiteral: true
+#           value: true
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             echo "Cleaning up Tier1 Ingress Record"
+#
+#                          echo "Checking if DNS record exists: ${{ env.TIER1_INGRESS_FQDN }}"
+#                          def queryResponse = httpRequest authentication: "${{ env.DNS_USER }}", \
+#                          ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \
+#                          contentType: 'APPLICATION_JSON', httpMode: 'GET', \
+#                          url: "${{ env.DNS_API_URL }}"+"/record:a?name=${{ env.TIER1_INGRESS_FQDN }}", \
+#                          validResponseCodes: '200,301:308'
+#                          def jsonResponse = new JsonSlurperClassic().parseText(queryResponse.content)
+#                          echo "DEBUG: queryResponse: ${{ env.queryResponse }}"
+#                          echo "DEBUG: jsonResponse: ${{ env.jsonResponse }}"
+#                          assert jsonResponse instanceof List
+#                          if(jsonResponse.size() == 1){
+#                            def aRecord = jsonResponse.get(0)
+#                            assert aRecord instanceof java.util.Map
+#                            assert aRecord.get('name') == "${{ env.TIER1_INGRESS_FQDN }}"
+#                            echo "DNS record exists. Deleting A record. FQDN: ${{ env.TIER1_INGRESS_FQDN }} IP: ${{ env.INGRESS_IP }}"
+#                            def recordRef = aRecord.get('_ref')
+#                            def response = httpRequest authentication: "${{ env.DNS_USER }}", \
+#                            ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \
+#                            contentType: 'APPLICATION_JSON', httpMode: 'DELETE', \
+#                            url: "${{ env.DNS_API_URL }}"+"/"+"${{ env.recordRef }}", validResponseCodes: '200,301:308'
+#                            echo "DEBUG: DNS API response after DELETE call: ${{ env.response }}"
+#                          }else{
+#                            error("Unexpected response length from DNS API. Aborting.")
+#                          }
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "echo \"Checking if DNS record exists: ${{ env.INGRESS_FQDN }}\"\n             def queryResponse = httpRequest authentication: \"${{ env.DNS_USER }}\", \\\n             ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \\\n             contentType: 'APPLICATION_JSON', httpMode: 'GET', \\\n             url: \"${{ env.DNS_API_URL }}\"+\"/record:a?name=${{ env.INGRESS_FQDN }}\", \\\n             validResponseCodes: '200,301:308'\n             def jsonResponse = new JsonSlurperClassic().parseText(queryResponse.content)\n             echo \"DEBUG: queryResponse: ${{ env.queryResponse }}\"\n             echo \"DEBUG: jsonResponse: ${{ env.jsonResponse }}\"\n             assert jsonResponse instanceof List\n             if(jsonResponse.size() == 1){\n               def aRecord = jsonResponse.get(0)\n               assert aRecord instanceof java.util.Map\n               assert aRecord.get('name') == \"${{ env.INGRESS_FQDN }}\"\n               echo \"DNS record exists. Deleting A record. FQDN: ${{ env.INGRESS_FQDN }} IP: ${{ env.INGRESS_IP }}\"\n               def recordRef = aRecord.get('_ref')\n               def response = httpRequest authentication: \"${{ env.DNS_USER }}\", \\\n               ignoreSslErrors: true, acceptType: 'APPLICATION_JSON', \\\n               contentType: 'APPLICATION_JSON', httpMode: 'DELETE', \\\n               url: \"${{ env.DNS_API_URL }}\"+\"/\"+\"${{ env.recordRef }}\", validResponseCodes: '200,301:308'\n               echo \"DEBUG: DNS API response after DELETE call: ${{ env.response }}\"\n             }else{\n               error(\"Unexpected response length from DNS API. Aborting.\")\n             }\n\n             echo \"Deleting image from registry\"\n\n             // query docker registry to retrieve image digest from tag using plain groovy.\n             // we cannot use the HTTP Request plugin here, because the wonderful docker registry\n             // API stashes the image digest in the response headers and the plugin can't handle that\n             def registryReqGet = new URL(\"${{ env.DOCKER_HTTP_API_URL }}\" + \"/manifests/\" + \"${{ env.IMAGE_TAG_TO_DELETE }}\")\n             echo \"Querying docker registry to get image digest for tag\"\n             HttpURLConnection queryConn = (HttpURLConnection) registryReqGet.openConnection()\n             queryConn.setRequestMethod(\"GET\")\n             // content type \"application/vnd.docker.distribution.manifest.v2+json\" is important:\n             queryConn.setRequestProperty(\"Accept\", \"application/vnd.docker.distribution.manifest.v2+json\");\n             queryConn.connect()\n             def responseHeaders = queryConn.getHeaderFields()\n             def queryConnResp = queryConn.getResponseCode() \n             if(queryConnResp == 200){\n               // good query response. HTTP DELETE call to delete image manifest digest\n               assert responseHeaders instanceof java.util.Map\n               echo \"DEBUG: responseHeaders ${{ env.responseHeaders }}\"\n               // this is where we find the manifest digest (response headers):\n               List dockerContentDigest = responseHeaders[\"Docker-Content-Digest\"]\n               def imageDigest = dockerContentDigest[0]\n               echo \"DEBUG: imageDigest: ${{ env.imageDigest }}\"\n               // we need to base64-encode creds manually for basic auth\n               def regBasicAuth = \"Basic ${REGISTRY_AUTH.bytes.encodeBase64().toString()}\"\n               echo \"DEBUG: DELETE URL: ${{ env.DOCKER_HTTP_API_URL }} + '/manifests/' + ${{ env.imageDigest }}\"\n               def registryReqDel = new URL(\"${{ env.DOCKER_HTTP_API_URL }}\" + \"/manifests/\" + \"${{ env.imageDigest }}\")\n               HttpURLConnection delConn = (HttpURLConnection) registryReqDel.openConnection()\n               delConn.setRequestMethod(\"DELETE\")\n               delConn.setRequestProperty(\"Accept\", \"application/vnd.docker.distribution.manifest.v2+json\");\n               delConn.setRequestProperty(\"Authorization\", regBasicAuth);\n               delConn.connect()\n               def delConnResponse = delConn.getResponseCode()\n               echo \"DEBUG: delConnResponse: ${{ env.delConnResponse }}\"\n               if(delConnResponse == 202){\n                 echo \"Deleted image digest: ${{ env.imageDigest }}\"\n                 //def delConnBody = delConn.getInputStream().getText()\n                 //echo \"DEBUG: delConnBody: ${{ env.delConnBody }}\"\n               }else{\n                 //error(\"Bad HTTP response from docker registry when deleting image digest: ${{ env.delConnResponse }}\")\n                 echo \"Bad HTTP response from docker registry when deleting image digest: ${{ env.delConnResponse }}\"\n               }\n               }else{\n               //error(\"Bad HTTP response from docker registry when querying image tag: ${{ env.queryConnResp }}\")\n               echo \"Bad HTTP response from docker registry when querying image tag: ${{ env.queryConnResp }}\"\n              }"
