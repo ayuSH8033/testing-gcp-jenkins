@@ -237,7 +237,7 @@ def sentryProject(){
 }
 
 def sentryDNS(){
- return "https://e1a0af792d214da4a75cc6a7@o1169287.ingest.sentry.io/4505443624681472"
+ return "https://e1a0af792d214da4a7ac2dfcc55cc6a7@o1169287.ingest.sentry.io/4505443624681472"
 }
 
 def getHttps(){
@@ -356,7 +356,6 @@ pipeline{
   options {
     //discard after number of specified builds
     buildDiscarder(logRotator(daysToKeepStr: '60', numToKeepStr: '200'))
-    ansiColor('xterm')
     timeout(time: 60, unit: 'MINUTES')
     skipDefaultCheckout()
   }
@@ -369,6 +368,10 @@ pipeline{
     DOCKER_REGISTRY             = "snpm-docker-" + "$applicationEnv" + ".random.net/"
     DOCKER_IMAGE_NAME           = "$DOCKER_REGISTRY"+"$SERVICE_REGISTRY"
     DOCKER_REGISTRY_PATH        = "https://" + "${env.DOCKER_REGISTRY}" + "${env.service_registry}"
+   // // docker HTTP API endpoint requires /v2/
+   // DOCKER_HTTP_API_URL       = "https://" + "${env.DOCKER_REGISTRY}" + "v2/" + "${env.service_registry}"
+   // // we decided to use the branch name as image tag. tags can be longer, but
+   // // we should limit tag size 63 chars, as it's also used as DNS subdomain
     DOCKER_IMAGE_TAG		        = getSafeBranchName()
     REGISTRY_USER               = getRegistryUser()
     runUnitTests                = "$runUnitTests"
@@ -472,6 +475,15 @@ pipeline{
             }
           }
         }
+
+        // TODO: enable this stage (with soft fail or hard fail?) some day
+        // stage('Lint') {
+        //   steps {
+        //     echo 'Checking for lint errors (to validate that pre-commit hook was not bypassed)'
+        //     sh 'npm run lint'
+        //   }
+        // }
+
         stage('Swagger') {
           steps {
             withCredentials([string(credentialsId: 'NPM_TOKEN', variable: 'NPM_TOKEN')]) {
@@ -610,19 +622,19 @@ pipeline{
           // QA Only
           BORDERFREE_JWT_SECRET = sh(
             returnStdout: true,
-            script: "curl -s -H \"APIKey: fd8762ea53c34d69e5c37f432b9f\" https://secrets.random.net/api/passwords/1188 | jq -r '.[][\"Password\"]'"
+            script: "curl -s -H \"APIKey: fd8762ea53c349b8ad69e5c37f432b9f\" https://secrets.random.net/api/passwords/1188 | jq -r '.[][\"Password\"]'"
           )
 
 
           JWT_SECRET = sh(
             returnStdout: true,
-            script: "curl -s -H \"APIKey: cdab497328f6d783b6e39c52f446\" https://secrets.random.net/api/passwords/1207 | jq -r '.[][\"Password\"]'"
+            script: "curl -s -H \"APIKey: cdab497328f653ead783b6e39c52f446\" https://secrets.random.net/api/passwords/1207 | jq -r '.[][\"Password\"]'"
           )
 
 
           REDIS_PWD = sh(
             returnStdout: true,
-            script: "curl -s -H \"APIKey: 86437eb23fcd55db3a729e4\" https://secrets.random.net/api/passwords/1202 | jq -r '.[][\"Password\"]'"
+            script: "curl -s -H \"APIKey: 86437eb23fcd5a9e684cf35db3a729e4\" https://secrets.random.net/api/passwords/1202 | jq -r '.[][\"Password\"]'"
           )
 
           BENTO_ENV_FIELD = getBentoEnvField()
@@ -653,6 +665,8 @@ pipeline{
              url: "${DNS_API_URL}"+"/record:a?name=${INGRESS_FQDN}", \
              validResponseCodes: '200,301:308'
              def jsonResponse = new JsonSlurperClassic().parseText(queryResponse.content)
+             //echo "DEBUG: queryResponse: ${queryResponse}"
+             //echo "DEBUG: jsonResponse: ${jsonResponse}"
              assert jsonResponse instanceof List
              if(jsonResponse.size() == 1){
                def aRecord = jsonResponse.get(0)
@@ -692,6 +706,8 @@ pipeline{
              url: "${DNS_API_URL}"+"/record:a?name=${TIER1_INGRESS_FQDN}", \
              validResponseCodes: '200,301:308'
              def jsonResponse = new JsonSlurperClassic().parseText(queryResponse.content)
+             //echo "DEBUG: queryResponse: ${queryResponse}"
+             //echo "DEBUG: jsonResponse: ${jsonResponse}"
              assert jsonResponse instanceof List
              if(jsonResponse.size() == 1){
                def aRecord = jsonResponse.get(0)
@@ -905,6 +921,21 @@ pipeline{
                //error("Bad HTTP response from docker registry when querying image tag: ${queryConnResp}")
                echo "Bad HTTP response from docker registry when querying image tag: ${queryConnResp}"
               }
+
+
+             /*
+             HTTP plugin does not work
+
+             echo "Deleting image from registry"
+             def registryGetResponse = httpRequest authentication: "${env.REGISTRY_USER}", ignoreSslErrors: true, \
+             customHeaders: [[ name: 'Accept:', value: '.docker.distribution.manifest.v2+json']], httpMode: 'GET', \
+             url: "https://registry.random.net/repository/docker-hosted-qa/v2/qa/devops-test/savagex/manifests/86"
+             def registryHeadResponse = httpRequest authentication: "${env.REGISTRY_USER}", ignoreSslErrors: true, \
+             customHeaders: [[ name: 'Accept:', value: '.docker.distribution.manifest.v2+json']], httpMode: 'HEAD', \
+             url: "https://registry.random.net/repository/docker-hosted-qa/v2/qa/devops-test/savagex/manifests/60"
+             echo "DEBUG: registryGetResponse: ${registryGetResponse.content}"
+             echo "DEBUG: registryHeadResponse: ${registryHeadResponse.content}"
+             */
             }
           }
         }
@@ -912,3 +943,12 @@ pipeline{
     }
   }
 }
+
+
+
+
+
+
+
+
+
